@@ -14,6 +14,8 @@
 /*** data ***/
 struct editorConfig // get the size of the terminal to draw row num
 {
+    int screenrows;
+    int screencols;
     struct termios orig_termios;
 };
 
@@ -61,7 +63,9 @@ char editorReadKey() // wait for key press and return it
    int nread;
    char c;
    while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
-       if (nread == -1 && errno != EAGAIN) die ("read");
+       if (nread == -1 && errno != EAGAIN) {
+           die ("read");
+       }
    }
    return c;
 }
@@ -70,7 +74,12 @@ int getWindowSize(int *rows, int *cols) // get the terminal size
 {
     struct winsize ws;
 
-    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 1 || ws.ws_col == 0) {
+    // move cursor to the bottom right, C:right, B:down, 999 ensures its bottom right
+    if (1 || ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 1 || ws.ws_col == 0) {
+        if  (write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12) != 12) {
+            return -1;
+        }
+        editorReadKey();
         return -1;
     } else {
         *cols = ws.ws_col;
@@ -94,10 +103,10 @@ void editorProcessKeypress() // func for mapping keypress to editor operation
 }
 
 /*** output ***/
-void editorDrawRows()
+void editorDrawRows() // draw tildes on screen with rows
 {
     int y;
-    for (y = 0; y < 24; y++) {
+    for (y = 0; y < E.screenrows; y++) {
         write(STDOUT_FILENO, "~\r\n", 3);
     }
 }
@@ -113,10 +122,19 @@ void editorRefreshScreen()
     write(STDOUT_FILENO, "\x1b[H", 3);
 }
 
-/*** main ***/
+/*** init ***/
+
+void initEditor() // initialize all the fields in the E struct
+{
+    if (getWindowSize(&E.screenrows, &E.screencols) == -1) {
+        die("getWindowSize");
+    }
+}
+
 int main()
 {
     enableRawMode(); // fully gets us into raw mode
+    initEditor();
 
     while (1) {
         editorRefreshScreen();
